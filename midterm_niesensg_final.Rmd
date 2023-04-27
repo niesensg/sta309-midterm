@@ -1,0 +1,274 @@
+---
+title: "STA 309 Midterm Dashboard"
+author: "Sarah Niesen"
+date: "2023-04-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(patchwork)
+```
+
+
+```{r reading saved data}
+load("allRead.RData")
+load("allMath.RData")
+```
+
+
+Focusing on Missouri School Districts
+```{r}
+moRead <- allRead %>% 
+  filter(STNAM == "MISSOURI") %>% 
+  filter(CATEGORY == "ALL") %>% 
+  filter(PCTPROF != "PS") %>% 
+  filter(GRADE == "00") %>% 
+  filter(NUMVALID >= 16)
+
+moMath <- allMath %>% 
+  filter(STNAM == "MISSOURI") %>% 
+  filter(CATEGORY == "ALL") %>% 
+  filter(PCTPROF != "PS") %>% 
+  filter(GRADE == "00") %>% 
+  filter(NUMVALID >= 16)
+```
+
+##Converting ranges into approximate PCTPROF
+
+Reading scores
+```{r}
+moRead <- moRead %>% 
+  mutate(PCTPROF = as.factor(PCTPROF))
+
+moRead <- moRead %>% 
+  mutate(PCTPROF = factor(PCTPROF, labels = c("10", "12", "15a", "13", "14", "15", "16", "17", "18",
+                                              "20", "22a", "25", "30", "22", "23", "24", "27a", "26",
+                                              "27", "28", "29", "32a", "35a", "31", "32", "33", "34",
+                                              "35", "37a", "36", "37", "38", "39", "40", "42a", "45a",
+                                              "50a", "41", "42", "43", "44", "45", "47a", "46", "47",
+                                              "48", "49", "50", "52a", "55a", "51", "52", "53", "54",
+                                              "55", "57a", "56", "57", "58", "59", "6", "60", "62a",
+                                              "65a", "70a", "61", "62", "63", "64", "65", "67a", "66",
+                                              "67", "68", "70", "72a", "75", "72", "77", "9", "0.5", 
+                                              "5", "10a"))) %>% 
+  mutate(PCTPROF = as.character(PCTPROF))
+
+moRead <- moRead %>% 
+  mutate(PCTPROF = ifelse(stri_endswith_fixed(PCTPROF, "a"), str_sub(PCTPROF, end = -2), PCTPROF)) %>% 
+  mutate(PCTPROF = as.numeric(PCTPROF))
+
+```
+
+Math scores
+```{r}
+moMath <- moMath %>% 
+  mutate(PCTPROF = as.factor(PCTPROF))
+
+moMath <- moMath %>% 
+  mutate(PCTPROF = factor(PCTPROF, labels = c("10", "12a", "11", "15a", "12", "13", "14", "15", "17a", "16",
+                                              "17", "18", "19", "2", "20", "22a", "25a", "21", "30a", "22",
+                                              "23", "24", "25", "27a", "26", "27", "28", "29", "3", "30",
+                                              "32", "35", "31", "32", "33", "34", "35", "37a", "36", "37",
+                                              "38", "39", "4", "40", "42a", "45", "50", "41", "42", "43",
+                                              "44", "45", "47a", "46", "47", "48", "49", "52a", "51", "53",
+                                              "54", "55", "57a", "56", "57", "6", "7.5", "60", "62", "65a",
+                                              "70", "64", "65", "67a", "66", "68", "7", "72", "8", "9",
+                                              "0.5", "5", "10", "2.5"))) %>% 
+  mutate(PCTPROF = as.character(PCTPROF))
+
+moMath <- moMath %>% 
+  mutate(PCTPROF = ifelse(stri_endswith_fixed(PCTPROF, "a"), str_sub(PCTPROF, end = -2), PCTPROF)) %>% 
+  mutate(PCTPROF = as.numeric(PCTPROF))
+
+```
+
+Merging for plot
+```{r}
+moRead <- moRead %>% 
+  select(LEANM, PCTPROF) %>% 
+  rename(Read_PCTPROF = PCTPROF)
+
+moMath <- moMath %>% 
+  select(LEANM, PCTPROF) %>% 
+  rename(Math_PCTPROF = PCTPROF)
+
+moBoth <- merge(moRead, moMath, by = "LEANM")
+
+```
+
+Extracting Missouri school district poverty estimates from district demographics
+```{r}
+districtDemo <-  read_xlsx("NHGIS_District_data.xlsx")
+
+moDemo <- districtDemo %>% 
+  filter(State == "Missouri")
+rm(districtDemo)
+
+moPoverty <- moDemo %>% 
+  mutate(povertyPct = 100 * `% Poverty (SAIPE Estimate)`,
+         District = `Geographic School District`) %>% 
+  select(District, povertyPct)
+rm(moDemo)
+```
+
+Adding poverty estimates to df with math and reading scores
+```{r}
+## Changing county names column to match moBoth
+moPoverty <- moPoverty %>% 
+  mutate(District = str_to_upper(District),
+         District = str_replace(District, "COUNTY", "CO."),
+         District = str_sub(District, end = -17))
+```
+
+
+```{r}
+  
+## Merging poverty estimates df with reading and math scores df
+moProfPoverty <- moBoth %>% 
+  right_join(moPoverty, by = c("LEANM" = "District"))
+
+```
+
+Extracting city school districts to plot as differently colored layer
+```{r}
+stlDistricts <- c("AFFTON 101", "BAYLESS", "BRENTWOOD", "CITY GARDEN MONTESSORI",
+"CLAYTON", "CONFLUENCE ACADEMIES", "CRYSTAL CITY 47", "DESOTO 73", "DUNKLIN R-V",
+"EAGLE COLLEGE PREP ENDEAVOR", "ELSBERRY R-II", "FERGUSON-FLORISSANT R-II",
+"FESTUS R-VI", "FOX C-6", "FRANCIS HOWELL R-III", "FRANKLIN CO. R-II",
+"GATEWAY SCIENCE ACAD/ST LOUIS", "GRANDVIEW R-II", "HANCOCK PLACE",
+"HAWTHORN LEADERSHIP SCHL GIRLS", "HAZELWOOD", "HILLSBORO R-III",
+"JEFFERSON CO. R-VII", "JENNINGS", "KAIROS ACADEMIES", "KIPP ST LOUIS PUBLIC SCHOOLS",
+"KIRKWOOD R-VII", "LA SALLE CHARTER SCHOOL", "LADUE", "LAFAYETTE PREPARATORY ACADEMY",
+"LIFT FOR LIFE ACADEMY", "LINDBERGH SCHOOLS", "LONEDELL R-14", "MAPLEWOOD-RICHMOND HEIGHTS",
+"MERAMEC VALLEY R-III", "MO SCHOOL FOR THE BLIND", "NEW HAVEN",
+"NORMANDY SCHOOLS COLLABORATIVE", "NORTH SIDE COMMUNITY SCHOOL", "NORTHWEST R-I",
+"ORCHARD FARM R-V", "PARKWAY C-2", "PATTONVILLE R-III", "PREMIER CHARTER SCHOOL",
+"RITENOUR", "RIVERVIEW GARDENS", "ROCKWOOD R-VI", "SILEX R-I", "SPRING BLUFF R-XV",
+"ST. CHARLES R-VI", "ST. CLAIR R-XIII", "ST. LOUIS CITY", "ST. LOUIS LANG IMMERSION SCH",
+"STRAIN-JAPAN R-XVI", "SULLIVAN", "SUNRISE R-IX", "THE ARCH COMMUNITY SCHOOL", "THE BIOME",
+"THE SOULARD SCHOOL", "TROY R-III", "UNION R-XI", "UNIVERSITY CITY", "VALLEY PARK",
+"WARREN CO. R-III", "WASHINGTON", "WEBSTER GROVES", "WENTZVILLE R-IV", "WINDSOR C-1",
+"WINFIELD R-IV", "WRIGHT CITY R-II OF WARREN CO.")
+
+stlProfPoverty <- moProfPoverty %>% 
+  filter(LEANM %in% stlDistricts)
+```
+
+Reading Score vs Poverty Level
+```{r, warning = FALSE, message = FALSE}
+plot_moRead <- ggplot(moProfPoverty) +
+  geom_smooth(aes(x = povertyPct, y = Read_PCTPROF), method = "lm", se = FALSE,
+              color = "blue3", size = 2) +
+  geom_point(aes(x = povertyPct, y = Read_PCTPROF),
+             color = "skyblue2", alpha = 0.6) +
+  geom_point(data = stlProfPoverty, aes(x = povertyPct, y = Read_PCTPROF),
+             color = "gray20", alpha = 0.8) +
+  theme_minimal() +
+  labs(title = "Reading Proficiency Scores by Percentage in Poverty",
+       subtitle = "St. Louis school districts plotted in black",
+       x = "% in Poverty",
+       y = "Reading Proficency Score",
+       caption = "Sources: US Department of Education, Urban Institute Data Catalog") +
+  annotate("text", x = 6, y = 75, label = "Ladue", size = 3) +
+  annotate("segment", x = 4, xend = 4, y = 72, yend = 70) +
+  annotate("text", x = 47, y = 38.4, label = "North Daviess R-III", size = 3) +
+  annotate("segment", x = 50, xend = 51.6, y = 34, yend = 30)
+
+plot_moRead
+```
+
+Math Score vs Poverty Level
+```{r, warning = FALSE, message = FALSE}
+
+plot_moMath <- ggplot(moProfPoverty) +
+  geom_smooth(aes(x = povertyPct, y = Math_PCTPROF), method = "lm", se = FALSE,
+              color = "chocolate4", size = 2) +
+   geom_point(aes(x = povertyPct, y = Math_PCTPROF),
+              color = "orange2", alpha = 0.6) +
+    geom_point(data = stlProfPoverty, aes(x = povertyPct, y = Math_PCTPROF),
+             color = "gray20", alpha = 0.8) +
+  theme_minimal() +
+  labs(title = "Math Proficiency Scores by Percentage in Poverty",
+       subtitle = "St. Louis school districts in black",
+       x = "% in Poverty",
+       y = "Math Proficency Score") +
+  annotate("text", x = 6.5, y = 69.5, label = "Ladue", size = 3) +
+  annotate("segment", x = 5, xend = 4, y = 66, yend = 64) +
+  annotate("text", x = 47, y = 34.5, label = "North Daviess R-III", size = 3) +
+  annotate("segment", x = 50, xend = 51.6, y = 31, yend = 25)
+
+plot_moMath
+```
+
+
+
+Missouri school district boundaries
+```{r, message = FALSE}
+
+districtBounds <- st_read("EDGE_SCHOOLDISTRICT_TL22_SY2122/EDGE_SCHOOLDISTRICT_TL22_SY2122.shp")
+
+moBounds <- districtBounds %>% 
+  filter(STATEFP == "29") %>% 
+  select(NAME, geometry)
+rm(districtBounds)
+```
+
+
+Merging district map with demographic information
+```{r}
+## Changing Name column to match moPoverty df
+moBounds <- moBounds %>% 
+  mutate(District = str_to_upper(NAME),
+         District = str_sub(District, end = -17),
+         District = str_replace(District, "COUNTY", "CO."))
+
+moDemoMap <- moBounds %>%
+  left_join(moPoverty, by = "District")
+```
+
+Demographic Choropleth
+```{r}
+
+plot_moDemo <- ggplot(moDemoMap) +
+  geom_sf(aes(geometry = geometry, fill = povertyPct), color = "gray60") +
+    scale_fill_gradient2(low = "gray98", mid = "firebrick", high = "gray4", limits = c(0, 60),
+                      midpoint = 30) +
+  theme_minimal() + 
+  coord_sf() +
+  labs(fill = "% in Poverty") +
+  annotate("text", x = -93.75, y = 40.3, label = "North Daviess R-III: 51.6%") +
+  annotate("text", x = -90.05, y = 39.15, label = "Ladue: 4.1%") +
+  annotate("segment", x = -94, xend = - 93.75, y = 40.02, yend = 40.15, color = "black") +
+  annotate("segment", x = -90.4, xend = -90.3, y = 38.646, yend = 39, color = "black") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(title = "Poverty in MO School Districts",
+       subtitle = "Percent in poverty determined by SAIPE estimate",
+       caption = "Source: Urban Institute Data Catalog")
+plot_moDemo
+```
+
+## Final Dashboard
+
+```{r, warning = FALSE, message = FALSE}
+
+plot_dashboard <- plot_moMath / plot_moRead | plot_moDemo
+
+plot_dashboard
+
+ggsave("niesensg_dashboard.png", dpi = 300, bg = "white",
+       height = 6, width = 12)
+
+```
+
+
